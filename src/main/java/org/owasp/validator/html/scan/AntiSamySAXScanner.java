@@ -44,6 +44,7 @@ import org.owasp.validator.html.CleanResults;
 import org.owasp.validator.html.Policy;
 import org.owasp.validator.html.ScanException;
 import org.owasp.validator.html.util.ErrorMessageUtil;
+import org.xml.sax.ContentHandler;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXNotRecognizedException;
 import org.xml.sax.SAXNotSupportedException;
@@ -229,10 +230,9 @@ public class AntiSamySAXScanner extends AbstractAntiSamyScanner {
 
       //noinspection deprecation
       final org.apache.xml.serialize.OutputFormat format = getOutputFormat();
-      //noinspection deprecation
-      final org.apache.xml.serialize.HTMLSerializer serializer = getHTMLSerializer(writer, format);
+      final ContentHandler contentHandler = getHTMLSerializer(writer, format);
 
-      transformer.transform(source, new SAXResult(serializer));
+      transformer.transform(source, new SAXResult(contentHandler));
       errorMessages.clear();
       errorMessages.addAll(cachedItem.magicSAXFilter.getErrorMessages());
       cachedItems.add(cachedItem);

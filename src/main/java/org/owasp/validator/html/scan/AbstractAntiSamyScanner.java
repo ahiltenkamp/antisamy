@@ -38,6 +38,7 @@ import org.owasp.validator.html.Policy;
 import org.owasp.validator.html.PolicyException;
 import org.owasp.validator.html.ScanException;
 import org.owasp.validator.html.util.ErrorMessageUtil;
+import org.xml.sax.ContentHandler;
 
 /**
  * This class defines the basic structure for each type of AntiSamy scanner. All the
@@ -113,7 +114,7 @@ public abstract class AbstractAntiSamyScanner {
     return format;
   }
 
-  protected org.apache.xml.serialize.HTMLSerializer getHTMLSerializer(
+  protected ContentHandler getHTMLSerializer(
       Writer w, OutputFormat format) {
     return new ASHTMLSerializer(w, format, policy);
   }

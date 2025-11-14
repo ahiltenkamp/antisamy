@@ -34,6 +34,16 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.swing.text.AbstractDocument.Content;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.sax.SAXResult;
+import javax.xml.transform.stream.StreamResult;
+
 import org.apache.batik.css.parser.ParseException;
 import org.htmlunit.cyberneko.parsers.DOMFragmentParser;
 import org.htmlunit.cyberneko.xerces.dom.DocumentImpl;
@@ -56,6 +66,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.w3c.dom.ProcessingInstruction;
 import org.w3c.dom.Text;
+import org.xml.sax.ContentHandler;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXNotRecognizedException;
@@ -183,20 +194,13 @@ public class AntiSamyDOMScanner extends AbstractAntiSamyScanner {
 
       final String trimmedHtml = html;
 
-      StringWriter out = new StringWriter();
-
-      @SuppressWarnings("deprecation")
-      org.apache.xml.serialize.OutputFormat format = getOutputFormat();
-
-      //noinspection deprecation
-      org.apache.xml.serialize.HTMLSerializer serializer = getHTMLSerializer(out, format);
-      serializer.serialize(dom);
+      final String serializedFragment = serialize(dom);
 
       /*
        * Get the String out of the StringWriter and rip out the XML
        * declaration if the Policy says we should.
        */
-      final String trimmed = trim(trimmedHtml, out.getBuffer().toString());
+      final String trimmed = trim(trimmedHtml, serializedFragment);
 
       Callable<String> cleanHtml =
           new Callable<String>() {
@@ -214,9 +218,75 @@ public class AntiSamyDOMScanner extends AbstractAntiSamyScanner {
       cachedItems.add(cachedItem);
       return results;
 
-    } catch (SAXException | IOException e) {
+    } catch (SAXException | TransformerException |  IOException e) {
       throw new ScanException(e);
     }
+  }
+
+/**
+ * Serializes the given {@link DocumentFragment} into an HTML string using the provided
+ * {@link Transformer}. The transformation is performed by converting the fragment into
+ * a {@link DOMSource}, applying the transformer, and directing the output into a
+ * {@link StringWriter} via a SAX-based serializer.
+ *
+ * <p>This method allows reuse of a preconfigured {@code Transformer} instance, making it
+ * suitable when you want to control output properties externally or cache transformer
+ * instances for performance.</p>
+ *
+ * @param transformer       the transformer to apply; must be configured with appropriate
+ *                          output properties (e.g., {@code OutputKeys.METHOD=html})
+ * @param documentFragment  the DOM fragment to serialize
+ * @return the serialized HTML string representing the fragment
+ * @throws TransformerException if an error occurs during the transformation process
+ * @throws IOException          if an I/O error occurs while writing to the {@code StringWriter}
+ */
+  private String serialize(Transformer transformer,
+      DocumentFragment documentFragment)
+      throws TransformerException, IOException {
+
+    String outerHtml = null;
+
+    DOMSource source = new DOMSource(documentFragment);
+    try (StringWriter stringWriter = new StringWriter()) {
+
+      org.apache.xml.serialize.OutputFormat format = getOutputFormat();
+
+      final ContentHandler contentHandler = getHTMLSerializer(stringWriter, format);
+      transformer.transform(source, new SAXResult(contentHandler));
+      stringWriter.flush();
+      outerHtml = stringWriter.toString();
+    }
+
+    return outerHtml;
+  }
+
+/**
+ * Convenience method to serialize a {@link DocumentFragment} into an HTML string using
+ * a newly created {@link Transformer}. The transformer is configured with default output
+ * properties suitable for HTML serialization:
+ * <ul>
+ *   <li>{@code OutputKeys.METHOD = "html"}</li>
+ *   <li>{@code OutputKeys.OMIT_XML_DECLARATION = "yes"}</li>
+ *   <li>{@code OutputKeys.INDENT = "yes"}</li>
+ * </ul>
+ *
+ * <p>This method is useful when you do not need to reuse a transformer and simply want
+ * to obtain the HTML representation of a fragment with standard settings.</p>
+ *
+ * @param documentFragment the DOM fragment to serialize
+ * @return the serialized HTML string representing the fragment
+ * @throws TransformerException if an error occurs during the transformation process
+ * @throws IOException          if an I/O error occurs while writing to the {@code StringWriter}
+ */  
+  private String serialize(DocumentFragment documentFragment)
+      throws TransformerException, IOException {
+    TransformerFactory tf = TransformerFactory.newInstance();
+    Transformer transformer = tf.newTransformer();
+    transformer.setOutputProperty(OutputKeys.METHOD, "html");
+    transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+    transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+
+    return serialize(transformer, documentFragment);
   }
 
   static DOMFragmentParser getDomParser()
